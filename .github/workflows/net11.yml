@@ -1,0 +1,25 @@
+name: .NET 11 canary
+
+# All logic lives in ci-net11.fsx (Fun.Build). This file only starts it and installs the SDKs.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - uses: actions/setup-dotnet@v4
+      with:
+        # 10.0.1xx satisfies global.json; 11.0.x supplies the .NET 11 runtime.
+        dotnet-version: |
+          10.0.1xx
+          11.0.x
+        dotnet-quality: 'preview'
+    - run: dotnet fsi ci-net11.fsx
