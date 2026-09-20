@@ -129,6 +129,9 @@ namespace MonoMod.Core.Platforms.Runtimes
 
         private static readonly MethodInfo? _IRuntimeMethodInfo_get_Value =
             typeof(RuntimeMethodHandle).Assembly.GetType("System.IRuntimeMethodInfo")?.GetMethod("get_Value");
+        // .NET 11 replaced the IRuntimeMethodInfo.get_Value interface method with a static GetValue(IRuntimeMethodInfo).
+        private static readonly MethodInfo? _IRuntimeMethodInfo_GetValue_Static =
+            typeof(RuntimeMethodHandle).Assembly.GetType("System.IRuntimeMethodInfo")?.GetMethod("GetValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
         private static readonly MethodInfo? _RuntimeHelpers__CompileMethod =
             typeof(RuntimeHelpers).GetMethod("_CompileMethod", BindingFlags.NonPublic | BindingFlags.Static) ??
@@ -263,7 +266,7 @@ namespace MonoMod.Core.Platforms.Runtimes
             && (_RuntimeHelpers__CompileMethod_TakesIntPtr
             || (_RuntimeMethodHandle_m_value is not null
             && (_RuntimeHelpers__CompileMethod_TakesIRuntimeMethodInfo
-            || (_IRuntimeMethodInfo_get_Value is not null
+            || ((_IRuntimeMethodInfo_get_Value is not null || _IRuntimeMethodInfo_GetValue_Static is not null)
             && _RuntimeHelpers__CompileMethod_TakesRuntimeMethodHandleInternal
                 ))));
 
@@ -293,8 +296,15 @@ namespace MonoMod.Core.Platforms.Runtimes
                 return dmd.Generate().CreateDelegate<Action<RuntimeMethodHandle>>();
             }
 
-            Helpers.Assert(_IRuntimeMethodInfo_get_Value is not null);
-            il.Emit(OpCodes.Callvirt, module.ImportReference(_IRuntimeMethodInfo_get_Value));
+            if (_IRuntimeMethodInfo_get_Value is not null)
+            {
+                il.Emit(OpCodes.Callvirt, module.ImportReference(_IRuntimeMethodInfo_get_Value));
+            }
+            else
+            {
+                Helpers.Assert(_IRuntimeMethodInfo_GetValue_Static is not null);
+                il.Emit(OpCodes.Call, module.ImportReference(_IRuntimeMethodInfo_GetValue_Static));
+            }
             if (_RuntimeHelpers__CompileMethod_TakesRuntimeMethodHandleInternal)
             {
                 il.Emit(OpCodes.Call, module.ImportReference(_RuntimeHelpers__CompileMethod));
@@ -354,9 +364,11 @@ namespace MonoMod.Core.Platforms.Runtimes
                 _RuntimeHelpers__CompileMethod.Invoke(null, new object?[] { rtMethodInfo });
                 return true;
             }
-            if (_IRuntimeMethodInfo_get_Value is null)
+            if (_IRuntimeMethodInfo_get_Value is null && _IRuntimeMethodInfo_GetValue_Static is null)
                 return false;
-            var rtMethodHandleInternal = _IRuntimeMethodInfo_get_Value.Invoke(rtMethodInfo, null);
+            var rtMethodHandleInternal = _IRuntimeMethodInfo_get_Value is not null
+                ? _IRuntimeMethodInfo_get_Value.Invoke(rtMethodInfo, null)
+                : _IRuntimeMethodInfo_GetValue_Static!.Invoke(null, new object?[] { rtMethodInfo });
             if (_RuntimeHelpers__CompileMethod_TakesRuntimeMethodHandleInternal)
             {
                 _RuntimeHelpers__CompileMethod.Invoke(null, new object?[] { rtMethodHandleInternal });
